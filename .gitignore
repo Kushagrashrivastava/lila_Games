@@ -1,0 +1,32 @@
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Raw data (large, provided by LILA)
+data/raw/*
+!data/raw/.gitkeep
+*.zip
+
+# Original spec with embedded images (clean copy lives in docs/ASSIGNMENT.md)
+Product Engineer- Written Test- LILA.md
+
+# Node
+node_modules/
+web/dist/
+.netlify/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.ruff_cache/
+pipeline/debug/out/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Claude local overrides
+.claude/settings.local.json
