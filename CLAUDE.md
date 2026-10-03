@@ -17,7 +17,7 @@ Level Designers, not data scientists. Every UI decision should favor clarity: re
 ## Architecture
 
 ```
-data/raw/         unzipped player_data.zip (parquet + minimaps + README). READ-ONLY, gitignored
+data/raw/player_data/  LILA telemetry (parquet files named *.nakama-0, minimaps, README). READ-ONLY, gitignored
 pipeline/         Python (DuckDB/pyarrow): parquet → compact per-match JSON + indexes
 web/              Vite + React + TypeScript static app (Canvas rendering)
 web/public/data/  pipeline output, committed so Netlify serves it statically
@@ -33,24 +33,56 @@ README.md         deliverable: stack, setup, env vars, deployed URL
 
 ## Commands
 
-> Fill these in for real when each part is scaffolded.
+- Rebuild data (run after any pipeline change): `cd pipeline && uv run python build.py`
+  (uv-managed Python 3.12; system Python is 3.9). Writes `web/public/data/*.json` and `web/public/maps/*.webp`.
+- Verify coordinates: `cd pipeline && uv run python debug/verify_coords.py`, then Read `pipeline/debug/out/*.png`.
+- Python lint/format: `cd pipeline && uv run ruff check . && uv run ruff format .`
+- Web dev server: `pnpm -C web dev` (http://localhost:5173)
+- Typecheck / lint / build: `pnpm -C web typecheck`, `pnpm -C web lint`, `pnpm -C web build`
+- TypeScript is pinned to 6.x: typescript-eslint doesn't support TS 7 yet. Don't upgrade it.
+- Browser testing: the automation tab is often *hidden*, so rAF and ResizeObserver don't fire until a screenshot
+  is taken. Check state with JS (`getImageData`, DOM text) rather than trusting a single screenshot.
 
-- Pipeline: `uv run python pipeline/build.py`. Needs `uv`, because system Python is 3.9. Target Python 3.12.
-- Web dev: `pnpm -C web dev`
-- Typecheck: `pnpm -C web exec tsc -b`
-- Lint: `pnpm -C web lint`
-- Build: `pnpm -C web build`
+## Code map
+
+- `pipeline/config.py`: map scale/origin, event codes (must match `web/src/data/events.ts`)
+- `pipeline/coords.py`: world → UV (the only place the formula lives in Python)
+- `pipeline/build.py`: clean, dedupe, classify bots, and write per-map columnar JSON
+- `web/src/map/viewport.ts`: UV ↔ screen, pan/zoom (the only coordinate math in the browser)
+- `web/src/map/draw.ts`: canvas rendering of the map, heatmap, paths, markers and player heads
+- `web/src/map/heatmap.ts`: grid binning, Gaussian blur, colour ramp
+- `web/src/App.tsx`: state (map/day/match/layers/heatmap), derived views, URL hash sync
+- `web/src/ui/*`: Sidebar, Timeline, Legend
 
 ## Data gotchas (CRITICAL; graded explicitly)
 
-> TODO: fill these in from `data/raw/README*` once `player_data.zip` is unzipped into `data/raw/`. Run `/inspect-data` first.
+Verified against the real data on 2026-10-03. The source README (`data/raw/player_data/README.md`) is **wrong in places**.
+Trust this section over the README. Full reasoning is in `docs/DECISIONS.md`.
 
-- [ ] **Coordinate mapping:** world bounds per map, axis orientation, Y-flip, scale/offset. Verify with `/verify-coords`.
-- [ ] **Bytes encoding:** which columns are bytes and how to decode them.
-- [ ] **Bot detection:** how humans are told apart from bots.
-- [ ] **Timestamps:** unit, timezone, and per-match relative time for playback.
-- [ ] **Event types:** exact values for kill, death, loot, storm death, and others.
-- [ ] **Edge cases:** nulls, out-of-bounds points, duplicate events, matches crossing midnight.
+- **Files:** parquet with no extension, `February_DD/{user_id}_{match_id}.nakama-0`. Each file is one player in one match.
+  Totals: 89,104 rows, 1,243 files, 339 users, 796 matches, 3 maps. No nulls.
+- **Event column** is BLOB. Decode it as utf-8 (DuckDB: `decode(event)`). The 8 values are `Position`, `BotPosition`, `Loot`,
+  `BotKill`, `BotKilled`, `KilledByStorm`, `Kill`, `Killed`.
+  - PvP is almost absent: 3 Kill / 3 Killed. Combat is mostly vs bots (2,415 BotKill, 700 BotKilled). There are only 39 storm deaths.
+- **Timestamps (README WRONG):** `ts` is typed timestamp(ms), but the raw number is **Unix epoch SECONDS** of real
+  wall-clock time (UTC). Real time is `to_timestamp(epoch_ms(ts))`. Proof: the dates match the folder names exactly, matches last
+  0.2–15 min (median 6.4), and positions are sampled about every 5 s. For playback use `t = real_seconds - match_start`.
+- **Date:** the folder name is the date. A few rows near UTC midnight fall into the neighboring folder.
+- **Bots (README rule mostly holds):** a numeric `user_id` means bot, a UUID means human. But 17 numeric-ID files (IDs 1379, 1402, 1429)
+  emit human-style `Position`/`Loot` events, and ID 1429 is a bot in other files. **Classify per file by event stream:**
+  `BotPosition` means bot, `Position` means human. Use the ID only as a fallback. Logged as an assumption.
+- **Coordinates:** use `x`,`z` (`y` is elevation). `u=(x-ox)/scale`, `v=(z-oz)/scale`, `px=u*W`, `py=(1-v)*H`.
+  scale/ox/oz: AmbroseValley 900/-370/-473 · GrandRift 581/-290/-290 · Lockdown 1000/-500/-500.
+  **README WRONG on image size:** the minimaps are NOT 1024. AmbroseValley 4320², GrandRift 2160×2158 (not square),
+  Lockdown 9000². Work in UV (0–1) and multiply by the real image size. All 89k points fall inside 0–1 UV.
+  Still to verify visually: `/verify-coords`.
+- **Duplicates:** 210 exact-duplicate Position rows (drop). 1,253 duplicate Loot rows, up to 7 identical copies at the same
+  stamp. Treat these as multiple items picked up at once: keep the count and render one marker as "×N".
+- **Split match:** match `ac049b28…` (one user) has a file in BOTH Feb_10 and Feb_11. The Feb_10 file (88 rows) is a subset of
+  the Feb_11 file (271 rows). Merge by (user_id, match_id) and dedupe.
+- **Sparse matches (product-critical):** 743 of 796 matches contain just ONE recorded journey. The max is 16. "Match playback"
+  usually means one player's run. Aggregate views (heatmaps across many matches) carry most of the insight.
+- **Minimap files are huge** (2.9–12MB). Resize and compress them for the web.
 
 ## Conventions
 

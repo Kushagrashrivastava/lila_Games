@@ -14,6 +14,7 @@ Product Engineer- Written Test- LILA.md
 # Node
 node_modules/
 web/dist/
+*.tsbuildinfo
 .netlify/
 
 # Python

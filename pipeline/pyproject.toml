@@ -1,0 +1,16 @@
+[project]
+name = "lila-pipeline"
+version = "0.1.0"
+description = "Preprocess LILA BLACK telemetry parquet into compact static JSON for the web viewer"
+requires-python = ">=3.12"
+dependencies = ["duckdb>=1.1", "pillow>=10.4"]
+
+[dependency-groups]
+dev = ["ruff>=0.6"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

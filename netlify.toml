@@ -1,0 +1,19 @@
+# Static deploy: the data is pre-built by pipeline/build.py and committed in web/public/data,
+# so Netlify only needs Node (no Python).
+[build]
+  base = "web"
+  command = "pnpm build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[[headers]]
+  for = "/data/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600"
+
+[[headers]]
+  for = "/maps/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"

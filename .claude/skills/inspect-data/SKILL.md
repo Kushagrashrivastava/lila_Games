@@ -5,7 +5,13 @@ description: Explore the LILA BLACK telemetry parquet files safely with DuckDB, 
 
 # Inspect telemetry data
 
-The raw data lives in `data/raw/` and is read-only. Never `cat` or `head` parquet files. Always query with a `LIMIT`.
+The raw data lives in `data/raw/player_data/` and is read-only. Never `cat` or `head` parquet files. Always query with a `LIMIT`.
+
+Files are parquet with **no `.parquet` extension**. They are named `February_DD/{user_id}_{match_id}.nakama-0`. Read them with:
+```sql
+read_parquet('data/raw/player_data/February_*/*.nakama-0', filename=true)
+```
+`filename=true` exposes the path, which is the only source of the **date** (from the folder name).
 
 ## Running queries
 
@@ -17,9 +23,9 @@ Fallback: `duckdb -c "<SQL>"` if the CLI is installed.
 
 ## Steps
 
-1. **Read the provided README first.** Look in `data/raw/**/README*`. It is the source of truth for coordinates, encoding and bots.
-2. **Inventory:** `ls -R data/raw | head -50` and `du -sh data/raw/*`. Note the file naming, which may encode the date, map or match.
-3. **Schema:** `DESCRIBE SELECT * FROM 'data/raw/**/*.parquet'`
+1. **Read the provided README first:** `data/raw/player_data/README.md`. Verify its claims rather than trusting them; for example, it says minimaps are 1024px, but they are not.
+2. **Inventory:** `ls data/raw/player_data` and `du -sh data/raw/player_data/*`.
+3. **Schema:** `DESCRIBE SELECT * FROM read_parquet('data/raw/player_data/February_*/*.nakama-0')`
 4. **Volume:** row counts by file, date, map and match.
 5. **Categoricals:** `SELECT col, count(*) ... GROUP BY 1 ORDER BY 2 DESC LIMIT 30` for event type, map, and the player/bot flag.
 6. **Bytes columns:** look at a few raw values and confirm the decoding (utf-8? fixed width? an ID?).
